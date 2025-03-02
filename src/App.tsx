@@ -1,72 +1,101 @@
-import React, { useState } from "react";
-import CodeEditor from "./components/CodeEditor";
-import "./App.scss"
+import React, { useState } from 'react';
+import CodeEditor from './components/CodeEditor';
+import './App.scss';
 
 const App: React.FC = () => {
-  const [code, setCode] = useState("# Write your Python code here\nprint('Hello, World!')");
-  const [output, setOutput] = useState<string | null>(null);
-  const [userInput, setUserInput] = useState<string | null>("");
+  const [code, setCode] = useState<string>("# Write your Python code here\nn = int(input('Enter a number: '))\nfor i in range(n):\n    print(i)");
+  const [output, setOutput] = useState<string>('');
+  const [inputValue, setInputValue] = useState<string>('');
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [ws, setWs] = useState<WebSocket | null>(null)
+  
+  const handleRunCode = (code: string) => {
+    setOutput('');
+    setCode(code);
 
-  const handleRun = async () => {
-    console.log("Code to run:", code);
-    console.log("User input:", userInput);
-    setOutput(null);
+    if (ws) {
+      ws.close();
+    }
+    
+    connectWebSocket(code);
+  };
 
-    try {
-      const submitResponse = await fetch("http://localhost:8080/submit_code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          language: "python",
-          source_code: code,
-          input: userInput,
-        }),
-      });
+  const connectWebSocket = (code: string) => {
+    const newWs = new WebSocket('ws://localhost:8080/ws');
+    setWs(newWs);
 
-      if (!submitResponse.ok) {
-        throw new Error(`Submit failed: ${await submitResponse.text()}`);
+    newWs.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'error') {
+          setOutput(prev => `${prev}\n<span class="error-text">${message.content}</span>\n`);
+          setInputValue('');
+        } else {
+          setOutput(prev => `${prev}${message.content}`);
+        }
+      } catch (e) {
+        setOutput(prev => `${prev}${event.data}\n`);
       }
+    };
 
-      const { id } = await submitResponse.json();
-      console.log("Code submitted, ID:", id);
+    newWs.onopen = () => {
+      setIsConnected(true);
+      console.log('Connection opened');
+      setOutput(`<span class="connection-text">=== Connection Opened ===\n\n</span>`);
+      newWs.send(JSON.stringify({
+        type: 'code',
+        content: code
+      }));
+    };
 
-      const executeResponse = await fetch(`http://localhost:8080/execute_code?id=${id}`, {
-        method: "POST",
-      });
-
-      if (!executeResponse.ok) {
-        throw new Error(`Execution failed: ${await executeResponse.text()}`);
+    newWs.onclose = () => {
+      console.log('Connection closed');
+      if (isConnected) {
+        setOutput(prev => `${prev}\n<span class="connection-text">=== Connection Closed ===\n</span>`);
+        setWs(null);
+        setIsConnected(false);
       }
+    };
 
-      const result = await executeResponse.json();
-      console.log("Execution result:", result);
+    newWs.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setOutput(prev => `${prev}<span class="connection-text">=== Connection Error ===\n</span>`);
+    };
+  };
 
-      setOutput(result.output);
-    } catch (error) {
-      console.error("Error executing code:", error);
-      setOutput(`${error}`);
+  const handleInputKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && ws && ws.readyState === WebSocket.OPEN) {
+      setOutput(prev => `${prev}${inputValue}\n`);
+      ws.send(JSON.stringify({
+        type: 'input',
+        content: inputValue
+      }));
+      setInputValue('');
     }
   };
 
   return (
     <div className="container">
-      <h1>Online Python Compiler</h1>
-      <div className="mainContent">
-        <div className="editorSection">
-          <CodeEditor value={code} onChange={setCode} height="400px" />
-          <textarea
-            placeholder="Enter input for your code..."
-            value={userInput || ""}
-            onChange={(e) => setUserInput(e.target.value)}
-            className="inputArea"
-          />
-          <button className="runButton" onClick={handleRun}>Run Code</button>
-        </div>
-
-        <div className="outputSection">
-          <h3 style={{ margin: "0px" }}>Output:</h3>
-          <pre>{output}</pre>
-        </div>
+      <div className="editor-container">
+        <CodeEditor 
+          onRunCode={handleRunCode} 
+          initialCode={code}
+        />
+      </div>
+      <div className="output-container">
+        <div 
+          id="output" 
+          className="output" 
+          dangerouslySetInnerHTML={{ __html: output }}
+        />
+        <input
+          type="text"
+          className="input"
+          placeholder="Enter your input here..."
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleInputKeyPress}
+        />
       </div>
     </div>
   );

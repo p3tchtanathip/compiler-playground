@@ -1,59 +1,38 @@
-import React, { useEffect, useRef } from "react";
-import { EditorView, basicSetup } from "codemirror";
-import { python } from "@codemirror/lang-python";
-import { EditorState } from "@codemirror/state";
+import React from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { python } from '@codemirror/lang-python';
+import './CodeEditor.scss';
 
 interface CodeEditorProps {
-  value: string;
-  onChange: (value: string) => void;
-  height: string;
+  onRunCode: (code: string) => void;
+  initialCode: string;
 }
 
-const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, height }) => {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
+const CodeEditor: React.FC<CodeEditorProps> = ({ onRunCode, initialCode }) => {
+  const [code, setCode] = React.useState(initialCode);
 
-  useEffect(() => {
-    if (!editorRef.current || viewRef.current) return;
+  const onChange = React.useCallback((value: string) => {
+    setCode(value);
+  }, []);
 
-    const startState = EditorState.create({
-      doc: value || "",
-      extensions: [
-        basicSetup,
-        python(),
-        EditorView.updateListener.of((update) => {
-          if (update.changes) {
-            const newValue = update.state.doc.toString();
-            onChange(newValue);
-          }
-        }),
-      ],
-    });
+  const handleRunCode = () => {
+    onRunCode(code);
+  };
 
-    const view = new EditorView({
-      state: startState,
-      parent: editorRef.current,
-    });
-    viewRef.current = view;
-
-    return () => {
-      view.destroy();
-      viewRef.current = null;
-    };
-  }, [onChange]);
-
-  useEffect(() => {
-    if (viewRef.current) {
-      const currentDoc = viewRef.current.state.doc.toString();
-      if (currentDoc !== value) {
-        viewRef.current.dispatch({
-          changes: { from: 0, to: currentDoc.length, insert: value },
-        });
-      }
-    }
-  }, [value]);
-
-  return <div ref={editorRef} style={{ height, backgroundColor: "#fff", border: "1px solid #000", fontSize: "14px", color: "#000", borderRadius: "4px", overflowX: "auto"}} />;
+  return (
+    <div className="code-editor">
+      <CodeMirror
+        value={code}
+        height="400px"
+        theme="dark"
+        extensions={[python()]}
+        onChange={onChange}
+      />
+      <button className="run-button" onClick={handleRunCode}>
+        Run Code
+      </button>
+    </div>
+  );
 };
 
 export default CodeEditor;
